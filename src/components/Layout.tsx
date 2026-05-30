@@ -1,4 +1,5 @@
 import { NavLink, Outlet } from "react-router-dom";
+import { TitleBar } from "./TitleBar";
 
 const links = [
   { to: "/", label: "Home" },
@@ -8,8 +9,10 @@ const links = [
 
 export function Layout() {
   return (
-    <div className="min-h-screen bg-[var(--neo-bg)] p-6">
-      <div className="mx-auto flex max-w-3xl flex-col gap-6">
+    <div className="flex h-screen flex-col overflow-hidden bg-[var(--neo-bg)]">
+      <TitleBar />
+      <div className="neo-scroll flex-1 overflow-y-auto p-6">
+        <div className="mx-auto flex max-w-3xl flex-col gap-6">
         <header className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <p className="text-sm font-medium uppercase tracking-wider text-[var(--neo-muted)]">
@@ -37,6 +40,7 @@ export function Layout() {
           </nav>
         </header>
         <Outlet />
+        </div>
       </div>
     </div>
   );

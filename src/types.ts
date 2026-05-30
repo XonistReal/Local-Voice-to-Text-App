@@ -7,6 +7,8 @@ export type AppStatus =
   | "loadingmodel"
   | "error";
 
+export type ModelKind = "speech" | "polish";
+
 export interface AppConfig {
   perfProfile: PerfProfile;
   autoDetectProfile: boolean;
@@ -21,18 +23,24 @@ export interface AppConfig {
   pasteMode: boolean;
   unloadWhenIdle: boolean;
   onboardingComplete: boolean;
+  useGpu: boolean;
+  polishTranscripts: boolean;
 }
 
 export interface StatusPayload {
   status: AppStatus;
   message?: string | null;
   lastLatencyMs?: number | null;
+  gpuActive: boolean;
+  inferenceDevice: string;
 }
 
 export interface HardwareInfo {
   totalMemoryGb: number;
   cpuCores: number;
   recommendedProfile: PerfProfile;
+  gpuBackend?: string | null;
+  gpuCompiled: boolean;
 }
 
 export interface ModelCatalogEntry {
@@ -42,6 +50,7 @@ export interface ModelCatalogEntry {
   url: string;
   sizeBytes: number;
   profile: PerfProfile;
+  kind: ModelKind;
 }
 
 export interface InstalledModel {

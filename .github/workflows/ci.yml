@@ -53,6 +53,13 @@ jobs:
         run: echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $env:GITHUB_ENV
         shell: pwsh
       - run: npm ci
-      - run: npm run tauri build
+      - name: Build (Linux/Windows — Vulkan GPU)
+        if: matrix.platform != 'macos-latest'
+        run: npm run tauri build
+        env:
+          CI: true
+      - name: Build (macOS — Metal GPU)
+        if: matrix.platform == 'macos-latest'
+        run: npm run tauri build -- --features gpu-metal --no-default-features
         env:
           CI: true

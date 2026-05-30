@@ -23,7 +23,9 @@ export const api = {
   clearHistory: () => invoke<void>("clear_history"),
   completeOnboarding: () => invoke<void>("complete_onboarding"),
   startRecording: () => invoke<void>("start_recording"),
-  stopAndTranscribe: () => invoke<string>("stop_and_transcribe"),
+  stopAndTranscribe: (skipInjection = false) =>
+    invoke<string>("stop_and_transcribe", { skipInjection }),
   preloadModel: () => invoke<void>("preload_model"),
   showMainWindow: () => invoke<void>("show_main_window"),
+  quitApp: () => invoke<void>("quit_app"),
 };

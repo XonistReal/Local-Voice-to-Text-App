@@ -4,6 +4,7 @@ use whisper_rs::{
     FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters,
 };
 
+use crate::gpu;
 use crate::perf::{thread_count, PerfProfile};
 
 #[derive(Debug, Error)]
@@ -16,26 +17,43 @@ pub enum TranscribeError {
 
 pub struct WhisperEngine {
     context: WhisperContext,
+    gpu_active: bool,
 }
 
 impl WhisperEngine {
-    pub fn load(model_path: &Path, profile: PerfProfile) -> Result<Self, TranscribeError> {
-        let mut params = WhisperContextParameters::default();
-        params.use_gpu(false);
-
-        let context = WhisperContext::new_with_params(
-            model_path
-                .to_str()
-                .ok_or_else(|| TranscribeError::Load("Invalid path".into()))?,
-            params,
-        )
-        .map_err(|e| TranscribeError::Load(e.to_string()))?;
-
-        let _ = thread_count(profile);
-        Ok(Self { context })
+    pub fn gpu_active(&self) -> bool {
+        self.gpu_active
     }
 
-    pub fn set_threads(&mut self, _profile: PerfProfile) {}
+    pub fn load(model_path: &Path, profile: PerfProfile, prefer_gpu: bool) -> Result<Self, TranscribeError> {
+        let path = model_path
+            .to_str()
+            .ok_or_else(|| TranscribeError::Load("Invalid path".into()))?;
+
+        if prefer_gpu && gpu::gpu_compiled() {
+            let mut params = WhisperContextParameters::default();
+            params.use_gpu(true);
+            params.gpu_device(0);
+
+            if let Ok(context) = WhisperContext::new_with_params(path, params) {
+                let _ = thread_count(profile, true);
+                return Ok(Self {
+                    context,
+                    gpu_active: true,
+                });
+            }
+        }
+
+        let mut params = WhisperContextParameters::default();
+        params.use_gpu(false);
+        let context = WhisperContext::new_with_params(path, params)
+            .map_err(|e| TranscribeError::Load(e.to_string()))?;
+
+        Ok(Self {
+            context,
+            gpu_active: false,
+        })
+    }
 
     pub fn transcribe(
         &self,
@@ -53,7 +71,8 @@ impl WhisperEngine {
             .map_err(|e| TranscribeError::Inference(e.to_string()))?;
 
         let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
-        params.set_n_threads(thread_count(profile));
+        // GPU handles the heavy work — keep CPU thread count minimal to avoid OS lag
+        params.set_n_threads(thread_count(profile, self.gpu_active));
         params.set_translate(false);
         params.set_no_context(true);
         params.set_single_segment(true);

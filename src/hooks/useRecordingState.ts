@@ -4,7 +4,11 @@ import { api } from "../lib/api";
 import type { StatusPayload } from "../types";
 
 export function useRecordingState() {
-  const [status, setStatus] = useState<StatusPayload>({ status: "idle" });
+  const [status, setStatus] = useState<StatusPayload>({
+    status: "idle",
+    gpuActive: false,
+    inferenceDevice: "CPU",
+  });
 
   const refresh = useCallback(async () => {
     setStatus(await api.getStatus());

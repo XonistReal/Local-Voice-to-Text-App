@@ -3,7 +3,9 @@ import { listen } from "@tauri-apps/api/event";
 import { NeoButton } from "../components/NeoButton";
 import { NeoCard } from "../components/NeoCard";
 import { HotkeyCapture } from "../components/HotkeyCapture";
+import { TitleBar } from "../components/TitleBar";
 import { useModels } from "../hooks/useModels";
+import { useRecordingState } from "../hooks/useRecordingState";
 import { api } from "../lib/api";
 import type { AppConfig, HardwareInfo } from "../types";
 
@@ -27,14 +29,17 @@ export function OnboardingPage({ onComplete }: { onComplete: () => void }) {
 
   if (!config || !hardware) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[var(--neo-bg)]">
-        <p className="text-[var(--neo-muted)]">Preparing VTT…</p>
+      <div className="flex h-screen flex-col overflow-hidden bg-[var(--neo-bg)]">
+        <TitleBar />
+        <div className="flex flex-1 items-center justify-center">
+          <p className="text-[var(--neo-muted)]">Preparing VTT…</p>
+        </div>
       </div>
     );
   }
 
   const recommendedModel =
-    catalog.find((m) => m.profile === hardware.recommendedProfile)?.id ??
+    catalog.find((m) => m.kind === "speech" && m.profile === hardware.recommendedProfile)?.id ??
     "tiny.en";
 
   const finish = async () => {
@@ -43,8 +48,10 @@ export function OnboardingPage({ onComplete }: { onComplete: () => void }) {
   };
 
   return (
-    <div className="min-h-screen bg-[var(--neo-bg)] p-6">
-      <div className="mx-auto flex max-w-xl flex-col gap-6">
+    <div className="flex h-screen flex-col overflow-hidden bg-[var(--neo-bg)]">
+      <TitleBar />
+      <div className="neo-scroll flex-1 overflow-y-auto p-6">
+        <div className="mx-auto flex max-w-xl flex-col gap-6">
         <header>
           <p className="text-sm uppercase tracking-wider text-[var(--neo-muted)]">
             Setup
@@ -83,6 +90,13 @@ export function OnboardingPage({ onComplete }: { onComplete: () => void }) {
                 {hardware.recommendedProfile}
               </span>{" "}
               profile.
+              {hardware.gpuCompiled ? (
+                <>
+                  {" "}
+                  GPU acceleration ({hardware.gpuBackend}) is enabled — Whisper
+                  runs on your graphics card, not your CPU.
+                </>
+              ) : null}
             </p>
             <NeoButton
               className="mt-6 w-full"
@@ -94,6 +108,7 @@ export function OnboardingPage({ onComplete }: { onComplete: () => void }) {
                   modelId: recommendedModel,
                   preloadModel: hardware.recommendedProfile !== "potato",
                   unloadWhenIdle: hardware.recommendedProfile === "potato",
+                  useGpu: hardware.gpuCompiled,
                 });
                 setStep("model");
               }}
@@ -172,11 +187,16 @@ export function OnboardingPage({ onComplete }: { onComplete: () => void }) {
         {step === "test" && (
           <NeoCard title="Try it">
             <p className="mb-4 text-sm text-[var(--neo-muted)]">
-              Hold the button, speak, then release. Your words appear below.
+              Hold the button, speak a short phrase (under 15 s), then release.
+              Longer clips use much more CPU and take longer to process.
             </p>
-            <TestRecorder onTranscript={setTestText} />
+            <TestRecorder
+              onTranscript={(text) =>
+                setTestText((prev) => (prev ? `${prev} ${text}` : text))
+              }
+            />
             <textarea
-              className="neo-inset min-h-28 w-full resize-none rounded-2xl p-4 text-[var(--neo-text)]"
+              className="neo-inset max-h-48 min-h-28 w-full overflow-y-auto resize-y rounded-2xl p-4 text-sm leading-relaxed text-[var(--neo-text)]"
               placeholder="Transcript appears here…"
               value={testText}
               onChange={(e) => setTestText(e.target.value)}
@@ -186,12 +206,18 @@ export function OnboardingPage({ onComplete }: { onComplete: () => void }) {
             </NeoButton>
           </NeoCard>
         )}
+        </div>
       </div>
     </div>
   );
 }
 
 function TestRecorder({ onTranscript }: { onTranscript: (text: string) => void }) {
+  const { status } = useRecordingState();
+  const isRecording = status.status === "recording";
+  const isBusy =
+    status.status === "transcribing" || status.status === "loadingmodel";
+
   useEffect(() => {
     const unlisten = listen<{ text: string }>("transcript-added", (event) => {
       onTranscript(event.payload.text);
@@ -205,10 +231,18 @@ function TestRecorder({ onTranscript }: { onTranscript: (text: string) => void }
     <NeoButton
       className="mb-4 w-full"
       variant="accent"
+      disabled={isBusy}
       onMouseDown={() => api.startRecording()}
-      onMouseUp={() => api.stopAndTranscribe()}
+      onMouseUp={() => api.stopAndTranscribe(true)}
+      onMouseLeave={() => isRecording && api.stopAndTranscribe(true)}
+      onTouchStart={() => api.startRecording()}
+      onTouchEnd={() => api.stopAndTranscribe(true)}
     >
-      Hold to test
+      {isBusy
+        ? "Transcribing…"
+        : isRecording
+          ? "Release to transcribe"
+          : "Hold to test"}
     </NeoButton>
   );
 }

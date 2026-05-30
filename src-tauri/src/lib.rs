@@ -1,8 +1,10 @@
 mod audio;
 mod config;
+mod gpu;
 mod inject;
 mod models;
 mod perf;
+mod polish;
 mod transcribe;
 mod vad;
 
@@ -16,7 +18,7 @@ use std::time::Instant;
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    AppHandle, Emitter, Manager, State,
+    AppHandle, Emitter, Manager, RunEvent, State, WindowEvent,
 };
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 use transcribe::WhisperEngine;
@@ -37,6 +39,8 @@ pub struct StatusPayload {
     pub status: AppStatus,
     pub message: Option<String>,
     pub last_latency_ms: Option<u64>,
+    pub gpu_active: bool,
+    pub inference_device: String,
 }
 
 pub struct AppState {
@@ -59,9 +63,24 @@ impl AppState {
                 status: AppStatus::Idle,
                 message: None,
                 last_latency_ms: None,
+                gpu_active: false,
+                inference_device: inference_device_label(false),
             }),
             shortcut_id: Mutex::new(None),
         }
+    }
+}
+
+fn inference_device_label(gpu_active: bool) -> String {
+    if gpu_active {
+        gpu::compiled_backend()
+            .map(gpu::backend_display_name)
+            .unwrap_or("GPU")
+            .to_string()
+    } else if gpu::gpu_compiled() {
+        "CPU (GPU fallback)".to_string()
+    } else {
+        "CPU".to_string()
     }
 }
 
@@ -92,6 +111,14 @@ fn update_tray_tooltip(app: &AppHandle, payload: &StatusPayload) {
 }
 
 fn sync_overlay(app: &AppHandle, payload: &StatusPayload) {
+    let state = app.state::<AppState>();
+    if !state.config.lock().onboarding_complete {
+        if let Some(overlay) = app.get_webview_window("overlay") {
+            let _ = overlay.hide();
+        }
+        return;
+    }
+
     if let Some(overlay) = app.get_webview_window("overlay") {
         match payload.status {
             AppStatus::Recording | AppStatus::Transcribing => {
@@ -103,6 +130,28 @@ fn sync_overlay(app: &AppHandle, payload: &StatusPayload) {
             }
         }
     }
+}
+
+fn cleanup_resources(app: &AppHandle) {
+    if let Some(state) = app.try_state::<AppState>() {
+        if state.audio.lock().is_recording() {
+            let _ = state.audio.lock().stop();
+        }
+        if let Some(id) = state.shortcut_id.lock().take() {
+            app.global_shortcut().unregister(id).ok();
+        }
+        app.global_shortcut().unregister_all().ok();
+        *state.whisper.lock() = None;
+    }
+
+    for window in app.webview_windows().values() {
+        let _ = window.destroy();
+    }
+}
+
+fn shutdown_app(app: &AppHandle) {
+    cleanup_resources(app);
+    app.exit(0);
 }
 
 fn parse_hotkey(hotkey: &str) -> Result<Shortcut, String> {
@@ -143,7 +192,9 @@ fn register_hotkey(app: &AppHandle, state: &AppState) -> Result<(), String> {
                     let app_clone = handler_app.clone();
                     std::thread::spawn(move || {
                         let state = app_clone.state::<AppState>();
-                        if let Err(e) = stop_and_transcribe_internal(&app_clone, state.inner()) {
+                        if let Err(e) =
+                            stop_and_transcribe_internal(&app_clone, state.inner(), false)
+                        {
                             set_status(state.inner(), AppStatus::Error, Some(e));
                             emit_status(&app_clone, state.inner());
                         }
@@ -157,8 +208,21 @@ fn register_hotkey(app: &AppHandle, state: &AppState) -> Result<(), String> {
     Ok(())
 }
 
+fn sync_inference_device(state: &AppState) {
+    let gpu_active = state
+        .whisper
+        .lock()
+        .as_ref()
+        .map(|e| e.gpu_active())
+        .unwrap_or(false);
+    let mut s = state.status.lock();
+    s.gpu_active = gpu_active;
+    s.inference_device = inference_device_label(gpu_active);
+}
+
 fn ensure_whisper_loaded(app: &AppHandle, state: &AppState) -> Result<(), String> {
     if state.whisper.lock().is_some() {
+        sync_inference_device(state);
         return Ok(());
     }
 
@@ -167,13 +231,25 @@ fn ensure_whisper_loaded(app: &AppHandle, state: &AppState) -> Result<(), String
 
     let config = state.config.lock().clone();
     let path = ensure_model_on_disk(&config.model_id)?;
-    let engine = WhisperEngine::load(&path, config.perf_profile)
-        .map_err(|e| format!("{e}"))?;
+    let engine =
+        WhisperEngine::load(&path, config.perf_profile, config.use_gpu).map_err(|e| format!("{e}"))?;
 
     *state.whisper.lock() = Some(engine);
+    sync_inference_device(state);
     set_status(state, AppStatus::Idle, None);
     emit_status(app, state);
     Ok(())
+}
+
+fn ensure_polish_loaded(_state: &AppState, _config: &AppConfig) -> Result<(), String> {
+    Ok(())
+}
+
+fn apply_polish(_state: &AppState, config: &AppConfig, text: &str) -> String {
+    if !config.polish_transcripts || text.trim().is_empty() {
+        return text.to_string();
+    }
+    polish::polish_quick(text)
 }
 
 fn start_recording_internal(app: &AppHandle, state: &AppState) -> Result<(), String> {
@@ -188,7 +264,11 @@ fn start_recording_internal(app: &AppHandle, state: &AppState) -> Result<(), Str
     Ok(())
 }
 
-fn stop_and_transcribe_internal(app: &AppHandle, state: &AppState) -> Result<(), String> {
+fn stop_and_transcribe_internal(
+    app: &AppHandle,
+    state: &AppState,
+    skip_injection: bool,
+) -> Result<(), String> {
     let config = state.config.lock().clone();
     let samples = state.audio.lock().stop().map_err(|e| e.to_string())?;
 
@@ -201,11 +281,17 @@ fn stop_and_transcribe_internal(app: &AppHandle, state: &AppState) -> Result<(),
         return Ok(());
     }
 
-    let trimmed = if config.silence_skip {
+    let mut trimmed = if config.silence_skip {
         vad::trim_silence(&samples, audio::TARGET_SAMPLE_RATE)
     } else {
         samples
     };
+
+    // Cap inference input — long clips explode CPU time on whisper
+    let max_samples = audio::TARGET_SAMPLE_RATE as usize * config.max_recording_secs as usize;
+    if trimmed.len() > max_samples {
+        trimmed.truncate(max_samples);
+    }
 
     if trimmed.is_empty() {
         set_status(state, AppStatus::Idle, Some("No speech detected".into()));
@@ -222,7 +308,7 @@ fn stop_and_transcribe_internal(app: &AppHandle, state: &AppState) -> Result<(),
     };
 
     let start = Instant::now();
-    let text = {
+    let raw_text = {
         let whisper = state.whisper.lock();
         let engine = whisper.as_ref().ok_or("Model not loaded")?;
         engine
@@ -231,9 +317,20 @@ fn stop_and_transcribe_internal(app: &AppHandle, state: &AppState) -> Result<(),
     };
     let latency_ms = start.elapsed().as_millis() as u64;
 
+    let text = if !raw_text.is_empty() && config.polish_transcripts {
+        set_status(state, AppStatus::Transcribing, Some("Polishing…".into()));
+        emit_status(app, state);
+        let _ = ensure_polish_loaded(state, &config);
+        apply_polish(state, &config, &raw_text)
+    } else {
+        raw_text
+    };
+
     if !text.is_empty() {
-        inject::inject_text(&text, config.paste_mode, config.inject_delay_ms)
-            .map_err(|e| e.to_string())?;
+        if !skip_injection {
+            inject::inject_text(&text, config.paste_mode, config.inject_delay_ms)
+                .map_err(|e| e.to_string())?;
+        }
         let entry = append_history(&text, latency_ms)?;
         let _ = app.emit("transcript-added", entry);
     }
@@ -248,6 +345,7 @@ fn stop_and_transcribe_internal(app: &AppHandle, state: &AppState) -> Result<(),
         s.message = None;
         s.last_latency_ms = Some(latency_ms);
     }
+    sync_inference_device(state);
     emit_status(app, state);
 
     Ok(())
@@ -265,7 +363,11 @@ fn save_app_config(
     config: AppConfig,
 ) -> Result<(), String> {
     let hotkey_changed = state.config.lock().hotkey != config.hotkey;
-    state.audio.lock().set_max_duration(config.max_recording_secs);
+    let gpu_pref_changed = state.config.lock().use_gpu != config.use_gpu;
+    state
+        .audio
+        .lock()
+        .set_max_duration(config.max_recording_secs);
     save_config(&config)?;
     *state.config.lock() = config.clone();
 
@@ -273,11 +375,17 @@ fn save_app_config(
         register_hotkey(&app, &state)?;
     }
 
+    if gpu_pref_changed {
+        *state.whisper.lock() = None;
+    }
+
     if config.unload_when_idle {
         *state.whisper.lock() = None;
     } else if config.preload_model && models::is_installed(&config.model_id) {
         let _ = ensure_whisper_loaded(&app, &state);
     }
+
+    sync_inference_device(&state);
 
     Ok(())
 }
@@ -368,12 +476,21 @@ fn start_recording(app: AppHandle, state: State<'_, AppState>) -> Result<(), Str
 }
 
 #[tauri::command]
-fn stop_and_transcribe(app: AppHandle, state: State<'_, AppState>) -> Result<String, String> {
-    stop_and_transcribe_internal(&app, &state)?;
-    Ok(state
-        .status
-        .lock()
-        .last_latency_ms
+async fn stop_and_transcribe(
+    app: AppHandle,
+    skip_injection: Option<bool>,
+) -> Result<String, String> {
+    let skip = skip_injection.unwrap_or(false);
+    let app_clone = app.clone();
+    tokio::task::spawn_blocking(move || {
+        let state = app_clone.state::<AppState>();
+        stop_and_transcribe_internal(&app_clone, state.inner(), skip)
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+
+    let latency = app.state::<AppState>().status.lock().last_latency_ms;
+    Ok(latency
         .map(|ms| format!("Done in {ms} ms"))
         .unwrap_or_else(|| "Done".into()))
 }
@@ -390,6 +507,11 @@ fn show_main_window(app: AppHandle) -> Result<(), String> {
         window.set_focus().map_err(|e| e.to_string())?;
     }
     Ok(())
+}
+
+#[tauri::command]
+fn quit_app(app: AppHandle) {
+    shutdown_app(&app);
 }
 
 fn build_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
@@ -412,7 +534,7 @@ fn build_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
                 let _ = app.emit("navigate", "/settings");
             }
             "quit" => {
-                app.exit(0);
+                shutdown_app(app);
             }
             _ => {}
         })
@@ -439,6 +561,14 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .manage(AppState::new())
+        .on_window_event(|window, event| {
+            if window.label() == "main" {
+                if let WindowEvent::CloseRequested { api, .. } = event {
+                    api.prevent_close();
+                    shutdown_app(window.app_handle());
+                }
+            }
+        })
         .setup(|app| {
             build_tray(app.handle())?;
 
@@ -457,7 +587,15 @@ pub fn run() {
             }
 
             if let Some(overlay) = app.get_webview_window("overlay") {
+                use tauri::window::Color;
+                let _ = overlay.set_background_color(Some(Color(0, 0, 0, 0)));
                 let _ = overlay.hide();
+            }
+
+            if let Some(icon) = app.default_window_icon().cloned() {
+                if let Some(main) = app.get_webview_window("main") {
+                    let _ = main.set_icon(icon);
+                }
             }
 
             Ok(())
@@ -478,7 +616,13 @@ pub fn run() {
             stop_and_transcribe,
             preload_model,
             show_main_window,
+            quit_app,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app_handle, event| {
+            if let RunEvent::ExitRequested { .. } = event {
+                cleanup_resources(&app_handle);
+            }
+        });
 }

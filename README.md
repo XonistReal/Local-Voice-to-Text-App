@@ -10,8 +10,10 @@ No cloud. No subscription. No telemetry.
 
 - **Push-to-talk dictation** — global hotkey works from any app (default: `Ctrl+Shift+Space`)
 - **100% local processing** — powered by [whisper.cpp](https://github.com/ggerganov/whisper.cpp) via `whisper-rs`
+- **GPU acceleration** — Vulkan on Windows/Linux, Metal on macOS
 - **Potato mode** — auto-detects low-end hardware and tunes threads, model size, and RAM usage
-- **Neumorphic UI** — onboarding, settings, transcript history, recording overlay
+- **Transcript polish** — rule-based cleanup (filler removal, casing, punctuation)
+- **Neumorphic UI** — custom title bar, onboarding, settings, transcript history, recording overlay
 - **Silence trimming** — skips empty recordings to save CPU cycles
 - **System tray** — runs in the background with idle / recording / transcribing states
 
@@ -22,12 +24,6 @@ No cloud. No subscription. No telemetry.
 | **Potato** | `tiny.en` (~75 MB) | 2 | ≤ 4 GB RAM, dual-core CPUs |
 | **Balanced** | `base` (~142 MB) | 4 | 8 GB RAM, 4+ cores |
 | **Quality** | `small` (~466 MB) | 6 | 16 GB+ RAM |
-
-Potato tier targets (acceptance criteria):
-
-- Idle RAM < 120 MB (model unloaded)
-- 5 s speech clip transcribed in < 6 s on 2-core CPU with `tiny.en`
-- UI never blocks during inference
 
 ## Privacy
 
@@ -47,8 +43,18 @@ Potato tier targets (acceptance criteria):
 
 ### Windows
 
-- [LLVM](https://releases.llvm.org/) (for `whisper-rs` bindgen) — set `LIBCLANG_PATH` to the LLVM `bin` folder, e.g. `C:\Program Files\LLVM\bin`
+- [LLVM](https://releases.llvm.org/) — set `LIBCLANG_PATH` to the LLVM `bin` folder, e.g. `C:\Program Files\LLVM\bin`
+- **Vulkan-capable GPU drivers** (NVIDIA, AMD, or Intel)
 - WebView2 (included in Windows 10/11)
+
+On Windows, if the default build path hits `MAX_PATH` limits with Vulkan shaders, use a short target dir:
+
+```powershell
+$env:LIBCLANG_PATH = "C:\Program Files\LLVM\bin"
+$env:VULKAN_SDK = "C:\VulkanSDK\<version>"
+$env:CARGO_TARGET_DIR = "C:\b"
+npm run tauri build
+```
 
 ### Linux
 
@@ -65,16 +71,10 @@ xcode-select --install
 ## Development
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/vtt.git
-cd vtt
+git clone https://github.com/XonistReal/Local-Voice-to-Text-App.git
+cd Local-Voice-to-Text-App
 npm install
 npm run tauri dev
-```
-
-On Windows PowerShell, before building:
-
-```powershell
-$env:LIBCLANG_PATH = "C:\Program Files\LLVM\bin"
 ```
 
 ## Building a release
@@ -83,7 +83,7 @@ $env:LIBCLANG_PATH = "C:\Program Files\LLVM\bin"
 npm run tauri build
 ```
 
-Installers appear in `src-tauri/target/release/bundle/`.
+Installers appear in `src-tauri/target/release/bundle/` (or your `CARGO_TARGET_DIR` if set).
 
 ## First run
 
@@ -96,17 +96,31 @@ Models download from [HuggingFace whisper.cpp](https://huggingface.co/ggerganov/
 ## Project structure
 
 ```
-vtt/
-├── src/                 # React + TypeScript frontend
-├── src-tauri/src/
-│   ├── audio.rs         # Microphone capture (cpal)
-│   ├── transcribe.rs    # Whisper inference
-│   ├── vad.rs           # Silence detection / trim
-│   ├── perf.rs          # Hardware profiles
-│   ├── models.rs        # Model download & management
-│   ├── inject.rs        # Text injection (enigo)
-│   └── config.rs        # Local settings & history
-└── .github/workflows/   # CI
+Local-Voice-to-Text-App/
+├── assets/                 # Source icon (synced to Tauri + public on build)
+├── public/                 # Static assets (app-icon.png generated at build)
+├── scripts/
+│   └── sync-icon.mjs       # Regenerates Tauri icons before frontend build
+├── src/                    # React + TypeScript frontend
+│   ├── components/         # UI (TitleBar, Layout, NeoCard, …)
+│   ├── hooks/              # Recording state, model management
+│   ├── pages/              # Home, Settings, History, Onboarding, Overlay
+│   └── styles/             # Neumorphic theme + scrollbar styling
+├── src-tauri/              # Rust backend (Tauri 2)
+│   ├── icons/              # Generated app icons (Windows/macOS/Linux/mobile)
+│   └── src/
+│       ├── audio.rs        # Microphone capture (cpal)
+│       ├── transcribe.rs   # Whisper inference
+│       ├── gpu.rs          # Vulkan / Metal / CUDA backend selection
+│       ├── vad.rs          # Silence detection / trim
+│       ├── polish.rs       # Transcript cleanup rules
+│       ├── perf.rs         # Hardware profiles
+│       ├── models.rs       # Model download & management
+│       ├── inject.rs       # Text injection (enigo)
+│       └── config.rs       # Local settings & history
+├── index.html              # Main window entry
+├── overlay.html            # Recording overlay entry
+└── .github/workflows/      # CI (lint, cargo check, cross-platform build)
 ```
 
 ## Tech stack
@@ -115,6 +129,7 @@ vtt/
 |-------|------------|
 | Shell | Tauri 2 |
 | STT | whisper.cpp / whisper-rs |
+| GPU | Vulkan (Windows/Linux), Metal (macOS) |
 | Audio | cpal |
 | UI | React 19, TypeScript, Tailwind CSS 4 |
 | Hotkeys | tauri-plugin-global-shortcut |
@@ -131,4 +146,4 @@ MIT — see [LICENSE](LICENSE).
 
 ## Contributing
 
-PRs welcome. This is an initial codebase release (v0.1.0) — expect rough edges and file issues for your platform.
+PRs welcome. File issues for platform-specific bugs or feature requests.

@@ -19,6 +19,18 @@ pub struct AppConfig {
     pub paste_mode: bool,
     pub unload_when_idle: bool,
     pub onboarding_complete: bool,
+    #[serde(default = "default_use_gpu")]
+    pub use_gpu: bool,
+    #[serde(default = "default_polish_transcripts")]
+    pub polish_transcripts: bool,
+}
+
+fn default_polish_transcripts() -> bool {
+    true
+}
+
+fn default_use_gpu() -> bool {
+    true
 }
 
 impl Default for AppConfig {
@@ -38,6 +50,8 @@ impl Default for AppConfig {
             paste_mode: false,
             unload_when_idle: profile == PerfProfile::Potato,
             onboarding_complete: false,
+            use_gpu: true,
+            polish_transcripts: true,
         }
     }
 }

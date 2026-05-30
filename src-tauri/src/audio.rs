@@ -30,17 +30,23 @@ pub struct AudioCapture {
 
 impl AudioCapture {
     pub fn new(max_recording_secs: u32) -> Self {
+        let max_samples = (TARGET_SAMPLE_RATE as usize) * max_recording_secs as usize;
         Self {
             recording: Arc::new(AtomicBool::new(false)),
-            raw_samples: Arc::new(Mutex::new(Vec::new())),
+            raw_samples: Arc::new(Mutex::new(Vec::with_capacity(max_samples))),
             input_sample_rate: Arc::new(Mutex::new(TARGET_SAMPLE_RATE)),
-            max_samples: (TARGET_SAMPLE_RATE as usize) * max_recording_secs as usize,
+            max_samples,
             stream: Mutex::new(None),
         }
     }
 
     pub fn set_max_duration(&mut self, secs: u32) {
         self.max_samples = (TARGET_SAMPLE_RATE as usize) * secs as usize;
+        let mut buf = self.raw_samples.lock();
+        if buf.capacity() < self.max_samples {
+            let needed = self.max_samples - buf.capacity();
+            buf.reserve(needed);
+        }
     }
 
     pub fn is_recording(&self) -> bool {
@@ -55,7 +61,10 @@ impl AudioCapture {
         {
             let mut buf = self.raw_samples.lock();
             buf.clear();
-            buf.reserve(self.max_samples.min(16000 * 30));
+            if buf.capacity() < self.max_samples {
+                let needed = self.max_samples - buf.capacity();
+                buf.reserve(needed);
+            }
         }
 
         let host = cpal::default_host();

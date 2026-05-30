@@ -18,16 +18,19 @@
         "height": 640,
         "minWidth": 640,
         "minHeight": 480,
-        "center": true
+        "center": true,
+        "decorations": false,
+        "shadow": true
       },
       {
         "label": "overlay",
-        "title": "VTT Overlay",
-        "url": "overlay",
-        "width": 220,
-        "height": 64,
+        "title": "",
+        "url": "overlay.html",
+        "width": 280,
+        "height": 112,
         "decorations": false,
         "transparent": true,
+        "shadow": false,
         "alwaysOnTop": true,
         "visible": false,
         "skipTaskbar": true,
@@ -40,18 +43,23 @@
     },
     "trayIcon": {
       "iconPath": "icons/32x32.png",
-      "iconAsTemplate": true
+      "iconAsTemplate": false
     }
   },
   "bundle": {
     "active": true,
     "targets": "all",
     "icon": [
+      "icons/icon.ico",
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
-      "icons/icon.icns",
-      "icons/icon.ico"
-    ]
+      "icons/icon.icns"
+    ],
+    "windows": {
+      "nsis": {
+        "installerIcon": "icons/icon.ico"
+      }
+    }
   }
 }

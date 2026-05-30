@@ -3,6 +3,13 @@ use std::path::PathBuf;
 
 use crate::perf::PerfProfile;
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum ModelKind {
+    Speech,
+    Polish,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ModelCatalogEntry {
@@ -12,11 +19,12 @@ pub struct ModelCatalogEntry {
     pub url: String,
     pub size_bytes: u64,
     pub profile: PerfProfile,
+    pub kind: ModelKind,
 }
 
 const HF_BASE: &str = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main";
 
-pub fn catalog() -> Vec<ModelCatalogEntry> {
+pub fn speech_catalog() -> Vec<ModelCatalogEntry> {
     vec![
         ModelCatalogEntry {
             id: "tiny.en".into(),
@@ -25,6 +33,7 @@ pub fn catalog() -> Vec<ModelCatalogEntry> {
             url: format!("{HF_BASE}/ggml-tiny.en.bin"),
             size_bytes: 77_000_000,
             profile: PerfProfile::Potato,
+            kind: ModelKind::Speech,
         },
         ModelCatalogEntry {
             id: "tiny".into(),
@@ -33,6 +42,7 @@ pub fn catalog() -> Vec<ModelCatalogEntry> {
             url: format!("{HF_BASE}/ggml-tiny.bin"),
             size_bytes: 77_000_000,
             profile: PerfProfile::Potato,
+            kind: ModelKind::Speech,
         },
         ModelCatalogEntry {
             id: "base".into(),
@@ -41,6 +51,7 @@ pub fn catalog() -> Vec<ModelCatalogEntry> {
             url: format!("{HF_BASE}/ggml-base.bin"),
             size_bytes: 148_000_000,
             profile: PerfProfile::Balanced,
+            kind: ModelKind::Speech,
         },
         ModelCatalogEntry {
             id: "small".into(),
@@ -49,8 +60,13 @@ pub fn catalog() -> Vec<ModelCatalogEntry> {
             url: format!("{HF_BASE}/ggml-small.bin"),
             size_bytes: 488_000_000,
             profile: PerfProfile::Quality,
+            kind: ModelKind::Speech,
         },
     ]
+}
+
+pub fn catalog() -> Vec<ModelCatalogEntry> {
+    speech_catalog()
 }
 
 pub fn models_dir() -> PathBuf {

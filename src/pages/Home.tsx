@@ -39,7 +39,7 @@ export function HomePage() {
 
   const handlePressEnd = async () => {
     setHolding(false);
-    await api.stopAndTranscribe();
+    await api.stopAndTranscribe(false);
     setHistory(await api.getHistory());
   };
 
@@ -84,7 +84,13 @@ export function HomePage() {
 
           {config?.showLatency && status.lastLatencyMs != null ? (
             <p className="text-xs text-[var(--neo-muted)]">
-              Last transcription: {status.lastLatencyMs} ms
+              Last transcription: {status.lastLatencyMs} ms ·{" "}
+              {status.inferenceDevice ?? "CPU"}
+            </p>
+          ) : status.inferenceDevice ? (
+            <p className="text-xs text-[var(--neo-muted)]">
+              Inference: {status.inferenceDevice}
+              {status.gpuActive ? " (active)" : ""}
             </p>
           ) : null}
 

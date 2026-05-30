@@ -16,6 +16,14 @@ models/
 # Rust
 src-tauri/target
 
+# Release artifacts (build locally; publish via GitHub Releases)
+*.exe
+*.msi
+*.dmg
+*.AppImage
+*.deb
+*.rpm
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

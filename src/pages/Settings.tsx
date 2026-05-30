@@ -12,9 +12,9 @@ function formatBytes(bytes: number) {
 }
 
 const profiles: { id: PerfProfile; label: string; hint: string }[] = [
-  { id: "potato", label: "Potato", hint: "Tiny model, 2 threads, lazy load" },
-  { id: "balanced", label: "Balanced", hint: "Base model, up to 4 threads" },
-  { id: "quality", label: "Quality", hint: "Small model, up to 6 threads" },
+  { id: "potato", label: "Potato", hint: "Tiny model, GPU preferred, minimal CPU" },
+  { id: "balanced", label: "Balanced", hint: "Base model, GPU acceleration" },
+  { id: "quality", label: "Quality", hint: "Small model, best accuracy" },
 ];
 
 export function SettingsPage() {
@@ -59,8 +59,40 @@ export function SettingsPage() {
               {hardware.recommendedProfile}
             </span>
           </p>
+          {hardware.gpuCompiled ? (
+            <p className="mt-2 text-sm text-[var(--neo-muted)]">
+              GPU backend:{" "}
+              <span className="font-medium text-[var(--neo-text)]">
+                {hardware.gpuBackend ?? "Available"}
+              </span>
+            </p>
+          ) : (
+            <p className="mt-2 text-sm text-[var(--neo-muted)]">
+              Built without GPU — CPU-only inference.
+            </p>
+          )}
         </NeoCard>
       ) : null}
+
+      <NeoCard title="Inference device">
+        <label className="neo-inset flex cursor-pointer items-center gap-3 rounded-2xl px-4 py-3">
+          <input
+            type="checkbox"
+            checked={config.useGpu}
+            onChange={(e) => save({ ...config, useGpu: e.target.checked })}
+            className="h-4 w-4 accent-[var(--neo-accent)]"
+          />
+          <div>
+            <span className="block text-sm text-[var(--neo-text)]">
+              Use GPU for transcription
+            </span>
+            <span className="text-xs text-[var(--neo-muted)]">
+              Offloads Whisper to your graphics card — keeps CPU free for other
+              apps. Falls back to CPU if GPU init fails.
+            </span>
+          </div>
+        </label>
+      </NeoCard>
 
       <NeoCard title="Performance profile">
         <div className="grid gap-3 sm:grid-cols-3">
@@ -88,7 +120,9 @@ export function SettingsPage() {
 
       <NeoCard title="Speech model">
         <div className="space-y-3">
-          {catalog.map((model) => {
+          {catalog
+            .filter((m) => m.kind === "speech")
+            .map((model) => {
             const isInstalled = installed.some((m) => m.id === model.id);
             const isActive = config.modelId === model.id;
             return (
@@ -144,6 +178,26 @@ export function SettingsPage() {
             </div>
           ) : null}
         </div>
+      </NeoCard>
+
+      <NeoCard title="Transcript polish">
+        <p className="mb-4 text-sm text-[var(--neo-muted)]">
+          Cleans up dictated text locally — removes filler words (um, uh, like),
+          fixes punctuation, capitalization, and repeated words before injecting.
+        </p>
+        <label className="neo-inset flex cursor-pointer items-center gap-3 rounded-2xl px-4 py-3">
+          <input
+            type="checkbox"
+            checked={config.polishTranscripts}
+            onChange={(e) =>
+              save({ ...config, polishTranscripts: e.target.checked })
+            }
+            className="h-4 w-4 accent-[var(--neo-accent)]"
+          />
+          <span className="text-sm text-[var(--neo-text)]">
+            Polish transcripts before injecting
+          </span>
+        </label>
       </NeoCard>
 
       <NeoCard title="Dictation">

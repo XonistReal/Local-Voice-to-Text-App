@@ -15,10 +15,13 @@
   --focus-ring: 0 0 0 3px oklch(55% 0.12 250 / 0.45);
 }
 
-.overlay-root {
-  background: transparent;
-}
-
-.overlay-root body {
-  background: transparent;
+.overlay-root,
+.overlay-root body,
+.overlay-root #root {
+  background: transparent !important;
+  overflow: hidden;
+  height: 100%;
+  width: 100%;
+  margin: 0;
+  min-height: unset;
 }

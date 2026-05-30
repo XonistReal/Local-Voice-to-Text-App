@@ -18,7 +18,7 @@ tauri-plugin-opener = "2"
 tauri-plugin-global-shortcut = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-whisper-rs = "0.16.0"
+whisper-rs = { version = "0.16.0", default-features = false }
 cpal = "0.17.3"
 enigo = "0.6.1"
 reqwest = { version = "0.13", features = ["stream", "rustls"] }
@@ -32,11 +32,11 @@ futures-util = "0.3.32"
 arboard = "3.6.1"
 
 [features]
-default = []
-# Optional GPU acceleration (never required — Potato mode is CPU-only)
-cuda = ["whisper-rs/cuda"]
-metal = ["whisper-rs/metal"]
-vulkan = ["whisper-rs/vulkan"]
+default = ["gpu-vulkan"]
+# GPU backends — pick one at build time (Vulkan works on NVIDIA, AMD, Intel on Windows/Linux)
+gpu-vulkan = ["whisper-rs/vulkan"]
+gpu-cuda = ["whisper-rs/cuda"]
+gpu-metal = ["whisper-rs/metal"]
 
 [profile.release]
 lto = true

@@ -42,7 +42,7 @@ function MainApp() {
 
   if (!ready) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
+      <div className="flex h-screen items-center justify-center overflow-hidden">
         <p className="text-[var(--neo-muted)]">Loading VTT…</p>
       </div>
     );
@@ -62,7 +62,7 @@ function MainApp() {
   return (
     <Suspense
       fallback={
-        <div className="flex min-h-screen items-center justify-center">
+        <div className="flex h-screen items-center justify-center overflow-hidden">
           <p className="text-[var(--neo-muted)]">Loading…</p>
         </div>
       }
