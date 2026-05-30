@@ -7,8 +7,8 @@ on:
     branches: [main, master]
 
 env:
-  # whisper.cpp uses std::filesystem (requires macOS 10.15+)
-  MACOSX_DEPLOYMENT_TARGET: "10.15"
+  # whisper.cpp std::filesystem + consistent link flags across the workspace
+  MACOSX_DEPLOYMENT_TARGET: "11.0"
 
 jobs:
   frontend:
@@ -58,14 +58,9 @@ jobs:
         run: echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $env:GITHUB_ENV
         shell: pwsh
       - run: npm ci
-      # First `--` ends npm args; second `--` forwards the rest to cargo via tauri.
-      - name: Build (Linux/Windows — CPU)
-        if: matrix.platform != 'macos-latest'
+      # CPU-only on all platforms (CI has no Vulkan; Metal needs macOS 12+ link runtime).
+      # Local release: gpu-vulkan (Win/Linux) or --features gpu-metal (macOS).
+      - name: Build
         run: npm run tauri build -- -- --no-default-features
-        env:
-          CI: true
-      - name: Build (macOS — Metal GPU)
-        if: matrix.platform == 'macos-latest'
-        run: npm run tauri build -- -- --no-default-features --features gpu-metal
         env:
           CI: true

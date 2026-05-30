@@ -68,6 +68,12 @@ sudo apt install libasound2-dev libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-ap
 xcode-select --install
 ```
 
+GPU build (Metal, requires macOS 11+):
+
+```bash
+npm run tauri build -- -- --no-default-features --features gpu-metal
+```
+
 ## Development
 
 ```bash
