@@ -26,7 +26,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: Install Linux build deps
         run: sudo apt-get update && sudo apt-get install -y libclang-dev cmake build-essential libgtk-3-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
-      - run: cargo check
+      # CPU-only: GitHub runners have no Vulkan SDK; default gpu-vulkan would fail.
+      - run: cargo check --no-default-features
         working-directory: src-tauri
 
   tauri-build:
@@ -53,13 +54,14 @@ jobs:
         run: echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $env:GITHUB_ENV
         shell: pwsh
       - run: npm ci
-      - name: Build (Linux/Windows — Vulkan GPU)
+      # First `--` ends npm args; second `--` forwards the rest to cargo via tauri.
+      - name: Build (Linux/Windows — CPU)
         if: matrix.platform != 'macos-latest'
-        run: npm run tauri build
+        run: npm run tauri build -- -- --no-default-features
         env:
           CI: true
       - name: Build (macOS — Metal GPU)
         if: matrix.platform == 'macos-latest'
-        run: npm run tauri build -- --features gpu-metal --no-default-features
+        run: npm run tauri build -- -- --no-default-features --features gpu-metal
         env:
           CI: true
