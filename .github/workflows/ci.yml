@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [main, master]
 
+env:
+  # whisper.cpp uses std::filesystem (requires macOS 10.15+)
+  MACOSX_DEPLOYMENT_TARGET: "10.15"
+
 jobs:
   frontend:
     runs-on: ubuntu-latest
@@ -25,7 +29,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - name: Install Linux build deps
-        run: sudo apt-get update && sudo apt-get install -y libclang-dev cmake build-essential libgtk-3-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev libclang-dev cmake build-essential libgtk-3-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
       # CPU-only: GitHub runners have no Vulkan SDK; default gpu-vulkan would fail.
       - run: cargo check --no-default-features
         working-directory: src-tauri
@@ -45,7 +49,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: Install Linux deps
         if: matrix.platform == 'ubuntu-latest'
-        run: sudo apt-get update && sudo apt-get install -y libclang-dev cmake build-essential libgtk-3-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev libclang-dev cmake build-essential libgtk-3-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
       - name: Install LLVM (Windows)
         if: matrix.platform == 'windows-latest'
         run: choco install llvm -y
