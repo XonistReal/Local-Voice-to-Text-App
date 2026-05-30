@@ -1,0 +1,62 @@
+@import "tailwindcss";
+@import "./tokens.css";
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  html,
+  body,
+  #root {
+    min-height: 100%;
+  }
+
+  body {
+    margin: 0;
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+    background: var(--neo-bg);
+    color: var(--neo-text);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+  }
+
+  :focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@layer utilities {
+  .neo-surface {
+    background: var(--neo-surface);
+    border-radius: var(--neo-radius);
+    box-shadow: var(--neo-shadow-light), var(--neo-shadow-dark);
+  }
+
+  .neo-inset {
+    background: var(--neo-surface);
+    border-radius: var(--neo-radius);
+    box-shadow: var(--neo-inset);
+  }
+
+  .neo-pressed {
+    box-shadow: var(--neo-inset);
+  }
+}
